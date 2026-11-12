@@ -1,0 +1,580 @@
+{
+  "info": {
+    "name": "E-Wallet Microservice",
+    "description": "Test case assignment E-Wallet sesuai openapi.yaml.\n\nCara pakai:\n1. docker compose up -d\n2. go run .\n3. Jalankan folder secara berurutan (atau Collection Runner). Request Register membuat email unik setiap kali dijalankan, dan Login menyimpan token ke variabel {{token}} secara otomatis.\n\nFolder 1-2 bisa diuji sekarang (Step 3). Folder 3-5 baru berfungsi setelah step terkait selesai: Wallet (Step 4), Transactions (Step 5-7), Payment (Step 8).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "userEmail", "value": "" },
+    { "key": "userPassword", "value": "rahasia123" },
+    { "key": "userID", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "receiverEmail", "value": "" },
+    { "key": "receiverUserID", "value": "" },
+    { "key": "paymentID", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('database UP', () => pm.expect(pm.response.json().database).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Users (Step 3)",
+      "item": [
+        {
+          "name": "Register - success (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Email unik setiap kali dijalankan, supaya collection bisa diulang tanpa 409",
+                  "pm.collectionVariables.set('userEmail', `john.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('field sesuai spec', () => {",
+                  "  pm.expect(body).to.have.keys('userID', 'name', 'email', 'message');",
+                  "  pm.expect(body.message).to.eql('User registered successfully');",
+                  "});",
+                  "pm.test('password tidak ikut terkirim', () => pm.expect(body).to.not.have.property('password'));",
+                  "pm.collectionVariables.set('userID', body.userID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+          }
+        },
+        {
+          "name": "Register - duplicate email, beda kapitalisasi (409)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('upperEmail', pm.collectionVariables.get('userEmail').toUpperCase());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('ada field error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Lagi\",\n  \"email\": \"{{upperEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+          }
+        },
+        {
+          "name": "Register - invalid input (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('ada field error', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"X\",\n  \"email\": \"bukan-email\",\n  \"password\": \"123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+          }
+        },
+        {
+          "name": "Login - success (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('ada token', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+          }
+        },
+        {
+          "name": "Login - wrong password (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('pesan generik', () => pm.expect(pm.response.json().error).to.eql('invalid email or password'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"salah12345\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+          }
+        },
+        {
+          "name": "Login - unknown email (401, pesan sama)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('pesan identik dengan password salah', () => pm.expect(pm.response.json().error).to.eql('invalid email or password'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"tidakada.{{$timestamp}}@example.com\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+          }
+        },
+        {
+          "name": "Register receiver (untuk transfer)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('receiverEmail', `jane.${Date.now()}@example.com`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('receiverUserID', pm.response.json().userID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"{{receiverEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Wallet (Step 4)",
+      "item": [
+        {
+          "name": "Get balance (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field sesuai spec', () => pm.expect(body).to.have.keys('userID', 'balance'));",
+                  "pm.test('userID milik pemegang token', () => pm.expect(body.userID).to.eql(pm.collectionVariables.get('userID')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+          }
+        },
+        {
+          "name": "Get balance - tanpa token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+          }
+        },
+        {
+          "name": "Get balance - token palsu (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "ini.bukan.token", "type": "string" }]
+            },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Transactions (Step 5-7)",
+      "item": [
+        {
+          "name": "Top-up (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('field sesuai spec', () => pm.expect(pm.response.json()).to.have.keys('transactionID', 'message', 'newBalance'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 1000000\n}" },
+            "url": { "raw": "{{baseUrl}}/transactions/topup", "host": ["{{baseUrl}}"], "path": ["transactions", "topup"] }
+          }
+        },
+        {
+          "name": "Top-up - amount 0 (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 0\n}" },
+            "url": { "raw": "{{baseUrl}}/transactions/topup", "host": ["{{baseUrl}}"], "path": ["transactions", "topup"] }
+          }
+        },
+        {
+          "name": "Transfer ke receiver (202)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 202', () => pm.response.to.have.status(202));",
+                  "pm.test('field sesuai spec', () => pm.expect(pm.response.json()).to.have.keys('transactionID', 'status', 'message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 250000\n}" },
+            "url": { "raw": "{{baseUrl}}/transactions/transfer", "host": ["{{baseUrl}}"], "path": ["transactions", "transfer"] }
+          }
+        },
+        {
+          "name": "Transfer - saldo tidak cukup (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 999999999\n}" },
+            "url": { "raw": "{{baseUrl}}/transactions/transfer", "host": ["{{baseUrl}}"], "path": ["transactions", "transfer"] }
+          }
+        },
+        {
+          "name": "History (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field sesuai spec', () => {",
+                  "  pm.expect(body).to.have.keys('transactions', 'pagination');",
+                  "  pm.expect(body.pagination).to.have.keys('currentPage', 'totalPages', 'totalItems');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/history?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "history"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Payment (Step 8)",
+      "item": [
+        {
+          "name": "Pay - buat sesi pending",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field spec ada', () => pm.expect(body).to.include.keys('transactionID', 'message', 'newBalance'));",
+                  "pm.test('status pending, saldo belum dipotong', () => {",
+                  "  pm.expect(body.status).to.eql('pending');",
+                  "  pm.expect(body.expiresAt).to.be.a('string');",
+                  "});",
+                  "pm.collectionVariables.set('paymentID', body.transactionID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 50000,\n  \"description\": \"Coffee and croissant\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+          }
+        },
+        {
+          "name": "Pay - confirm (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field spec ada', () => pm.expect(body).to.include.keys('transactionID', 'message', 'newBalance'));",
+                  "pm.test('status completed', () => pm.expect(body.status).to.eql('completed'));",
+                  "pm.test('ID sama dengan payment yang dibuat', () => pm.expect(body.transactionID).to.eql(pm.collectionVariables.get('paymentID')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
+            }
+          }
+        },
+        {
+          "name": "Pay - confirm kedua kali (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('pesan sudah completed', () => pm.expect(pm.response.json().error).to.eql('payment is already completed'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
+            }
+          }
+        },
+        {
+          "name": "Pay - saldo tidak cukup (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 99999999\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+          }
+        },
+        {
+          "name": "Pay - confirm id acak (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay/{{$guid}}/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "pay", "{{$guid}}", "confirm"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
