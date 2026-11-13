@@ -16,10 +16,10 @@ func InternalAuth(apiKey string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		got := []byte(ctx.GetHeader(InternalAPIKeyHeader))
 
-		// ConstantTimeCompare: lama perbandingan tidak bergantung pada beberapa karakter yang cocok
+		// ConstantTimeCompare: lama perbandingan tidak bergantung pada berapa karakter yang cocok
 		// sehingga attacker tidak bisa menebak key sedikit demi sedikit dari waktu respons
 		if subtle.ConstantTimeCompare(got, expected) != 1 {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, dto.InternalErorResponse{
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, dto.InternalErrorResponse{
 				Error: "invalid or missing internal api key",
 				Code:  "UNAUTHORIZED",
 			})

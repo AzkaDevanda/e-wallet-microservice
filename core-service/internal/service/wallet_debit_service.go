@@ -11,7 +11,7 @@ import (
 )
 
 // ErrIdempotencyConflict: referenceID yang sama dipakai lagi dengan data yang berbeda
-// (user, amount, atau merchant lain). ini bukan entry tapi kesalahan pemanggil
+// (user, amount, atau merchant lain). ini bukan retry tapi kesalahan pemanggil
 var ErrIdempotencyConflict = errors.New("referenceID already used with different data")
 
 // DebitInput adalah permintaan potong saldo dari payment-service
@@ -25,12 +25,12 @@ type DebitInput struct {
 // DebitResult adalah hasil debit, Replayed = true kalau referenceID ini sudah pernah diproses
 // dan saldo tidak dipotong lagi
 type DebitResult struct {
-	Transction *model.Transaction
-	NewBalance int64
-	Replayed   bool
+	Transaction *model.Transaction
+	NewBalance  int64
+	Replayed    bool
 }
 
-// WalletDebitService memotong saldo untuk pembayaran secara indempotent
+// WalletDebitService memotong saldo untuk pembayaran secara idempoten
 // Dipanggil oleh endpoint internal, bukan oleh user
 type WalletDebitService interface {
 	Debit(ctx context.Context, in DebitInput) (*DebitResult, error)
@@ -48,7 +48,7 @@ func (w *walletDebitService) Debit(ctx context.Context, in DebitInput) (*DebitRe
 
 	err := w.transactor.WithinTransaction(ctx, func(ctx context.Context) error {
 		// 1. Kunci wallet dulu, Request lain untuk wallet yang sama (termasuk retry
-		// dengan referanceID yang sama) menunggu di sini sampai transaksi ini selesai.
+		// dengan referenceID yang sama) menunggu di sini sampai transaksi ini selesai.
 		wallet, err := w.walletRepo.FindByUserIDForUpdate(ctx, in.UserID)
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrWalletNotFound
@@ -65,9 +65,9 @@ func (w *walletDebitService) Debit(ctx context.Context, in DebitInput) (*DebitRe
 				return ErrIdempotencyConflict
 			}
 			result = &DebitResult{
-				Transction: existing,
-				NewBalance: wallet.Balance,
-				Replayed:   true,
+				Transaction: existing,
+				NewBalance:  wallet.Balance,
+				Replayed:    true,
 			}
 			return nil
 		}
@@ -96,7 +96,7 @@ func (w *walletDebitService) Debit(ctx context.Context, in DebitInput) (*DebitRe
 		}
 
 		if err := w.transactionRepo.Create(ctx, trx); err != nil {
-			// Jaringan pengaman: unique index (reference_id, type) menolak baris kedua
+			// Jaring pengaman: unique index (reference_id, type) menolak baris kedua
 			// Seluruh transaksi (termasuk potongan saldo di atas) ikut ROLLBACK
 			if errors.Is(err, repository.ErrDuplicate) {
 				return ErrIdempotencyConflict
@@ -104,7 +104,7 @@ func (w *walletDebitService) Debit(ctx context.Context, in DebitInput) (*DebitRe
 			return fmt.Errorf("record payment transaction: %w", err)
 		}
 
-		result = &DebitResult{Transction: trx, NewBalance: update.Balance}
+		result = &DebitResult{Transaction: trx, NewBalance: update.Balance}
 		return nil
 	})
 

@@ -1,6 +1,6 @@
 package dto
 
-type InternalErorResponse struct {
+type InternalErrorResponse struct {
 	Error string `json:"error"`
 	Code  string `json:"code"`
 }
