@@ -1,4 +1,4 @@
-module e-wallet-microservice
+module core-service
 
 go 1.26.0
 

@@ -1,7 +1,7 @@
 package router
 
 import (
-	"e-wallet-microservice/internal/handler"
+	"core-service/internal/handler"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,7 +13,6 @@ type Deps struct {
 	User        *handler.UserHandler
 	Wallet      *handler.WalletHandler
 	Transaction *handler.TransactionHandler
-	Payment     *handler.PaymentHandler
 }
 
 func New(d Deps) *gin.Engine {
@@ -36,10 +35,6 @@ func New(d Deps) *gin.Engine {
 	transactions.POST("/topup", d.Transaction.TopUp)
 	transactions.POST("/transfer", d.Transaction.Transfer)
 	transactions.GET("/history", d.Transaction.History)
-
-	// Payment: dipisah supaya mudah dipindah ke payment-service di Part 2
-	transactions.POST("/pay", d.Payment.Create)
-	transactions.POST("/pay/:id/confirm", d.Payment.Confirm)
 
 	return r
 }

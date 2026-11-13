@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"e-wallet-microservice/internal/dto"
+	"core-service/internal/dto"
 	"net/http"
 	"strings"
 

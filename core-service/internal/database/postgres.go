@@ -1,7 +1,7 @@
 package database
 
 import (
-	"e-wallet-microservice/internal/config"
+	"core-service/internal/config"
 	"time"
 
 	"gorm.io/driver/postgres"

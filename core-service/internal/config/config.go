@@ -21,9 +21,6 @@ type Config struct {
 
 	JWTSecret string
 	TokenTTL  time.Duration
-
-	PaymentTTL            time.Duration
-	PaymentExpiryInterval time.Duration
 }
 
 // LoadConfig baca file .env dan kembaliin struct confignya
@@ -33,18 +30,15 @@ func LoadConfig() *Config {
 	}
 
 	cfg := &Config{
-		AppPort:    getEnv("APP_PORT", "8080"),
+		AppPort:    getEnv("APP_PORT", "8081"),
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5433"),
 		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: getEnv("DB_PASSWORD", ""),
-		DBName:     getEnv("DB_NAME", "e_wallet_microservice"),
+		DBName:     getEnv("DB_NAME", "core_db"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:  getEnv("JWT_SECRET", ""),
 		TokenTTL:   getDuration("TOKEN_TTL", 24*time.Hour),
-
-		PaymentTTL:            getDuration("PAYMENT_TTL", 10*time.Minute),
-		PaymentExpiryInterval: getDuration("PAYMENT_EXPIRY_INTERVAL", 30*time.Second),
 	}
 
 	if cfg.JWTSecret == "" {

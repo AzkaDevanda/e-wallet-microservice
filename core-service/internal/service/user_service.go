@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"e-wallet-microservice/internal/dto"
-	"e-wallet-microservice/internal/model"
-	"e-wallet-microservice/internal/repository"
+	"core-service/internal/dto"
+	"core-service/internal/model"
+	"core-service/internal/repository"
 	"errors"
 	"fmt"
 	"strings"

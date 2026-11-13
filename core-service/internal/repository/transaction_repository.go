@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"e-wallet-microservice/internal/model"
+	"core-service/internal/model"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"

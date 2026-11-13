@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"e-wallet-microservice/internal/dto"
-	"e-wallet-microservice/internal/middleware"
-	"e-wallet-microservice/internal/service"
+	"core-service/internal/dto"
+	"core-service/internal/middleware"
+	"core-service/internal/service"
 	"errors"
 	"log"
 	"net/http"

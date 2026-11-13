@@ -1,7 +1,7 @@
 package database
 
 import (
-	"e-wallet-microservice/internal/model"
+	"core-service/internal/model"
 
 	"gorm.io/gorm"
 )
@@ -12,6 +12,5 @@ func Migrate(db *gorm.DB) error {
 		&model.User{},
 		&model.Wallet{},
 		&model.Transaction{},
-		&model.Payment{},
 	)
 }

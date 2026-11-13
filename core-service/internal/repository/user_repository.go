@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"e-wallet-microservice/internal/model"
+	"core-service/internal/model"
 	"errors"
 
 	"gorm.io/gorm"

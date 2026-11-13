@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"e-wallet-microservice/internal/dto"
-	"e-wallet-microservice/internal/service"
+	"core-service/internal/dto"
+	"core-service/internal/service"
 	"errors"
 	"log"
 	"net/http"

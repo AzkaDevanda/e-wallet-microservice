@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"e-wallet-microservice/internal/auth"
-	"e-wallet-microservice/internal/config"
-	"e-wallet-microservice/internal/database"
-	"e-wallet-microservice/internal/handler"
-	"e-wallet-microservice/internal/middleware"
-	"e-wallet-microservice/internal/repository"
-	"e-wallet-microservice/internal/router"
-	"e-wallet-microservice/internal/service"
-	"e-wallet-microservice/internal/worker"
+	"core-service/internal/auth"
+	"core-service/internal/config"
+	"core-service/internal/database"
+	"core-service/internal/handler"
+	"core-service/internal/middleware"
+	"core-service/internal/repository"
+	"core-service/internal/router"
+	"core-service/internal/service"
 	"errors"
 	"log"
 	"net/http"
@@ -53,19 +52,14 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	walletRepo := repository.NewWalletRepository(db)
 	transactionRepo := repository.NewTransactionRepository(db)
-	paymentRepo := repository.NewPaymentRepository(db)
 
 	userService := service.NewUserService(transactor, userRepo, walletRepo, jwtManager)
 	walletService := service.NewWalletService(walletRepo)
 	transactionService := service.NewTransactionService(transactor, walletRepo, transactionRepo)
 
-	walletGateway := service.NewLocalWalletGateway(walletRepo, transactionRepo)
-	paymentService := service.NewPaymentService(transactor, paymentRepo, walletGateway, cfg.PaymentTTL)
-
 	userHandler := handler.NewUserHandler(userService)
 	walletHandler := handler.NewWalletHandler(walletService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
-	paymentHandler := handler.NewPaymentHandler(paymentService)
 
 	// 4. Router
 	r := router.New(router.Deps{
@@ -74,13 +68,9 @@ func main() {
 		User:        userHandler,
 		Wallet:      walletHandler,
 		Transaction: transactionHandler,
-		Payment:     paymentHandler,
 	})
 
-	// 5. Background worker untuk payment yang kedaluwarsa
-	go worker.RunPaymentExpiry(ctx, paymentService, cfg.PaymentExpiryInterval)
-
-	// 6. Jalankan server di goroutine, lalu tunggu sinyal berhenti
+	// 5. Jalankan server di goroutine, lalu tunggu sinyal berhenti
 	srv := &http.Server{
 		Addr:    ":" + cfg.AppPort,
 		Handler: r,
@@ -95,7 +85,7 @@ func main() {
 	<-ctx.Done()
 	log.Println("menerima sinyal berhenti, mematikan server...")
 
-	// 7. Graceful shutdown: beri waktu request yang sedang berjalan untuk selesai
+	// 6. Graceful shutdown: beri waktu request yang sedang berjalan untuk selesai
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
