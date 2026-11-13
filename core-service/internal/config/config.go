@@ -21,6 +21,8 @@ type Config struct {
 
 	JWTSecret string
 	TokenTTL  time.Duration
+
+	InternalAPIKey string
 }
 
 // LoadConfig baca file .env dan kembaliin struct confignya
@@ -39,10 +41,15 @@ func LoadConfig() *Config {
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:  getEnv("JWT_SECRET", ""),
 		TokenTTL:   getDuration("TOKEN_TTL", 24*time.Hour),
+
+		InternalAPIKey: getEnv("INTERNAL_API_KEY", ""),
 	}
 
 	if cfg.JWTSecret == "" {
 		log.Fatal("JWT_SECRET wajib diisi")
+	}
+	if cfg.InternalAPIKey == "" {
+		log.Fatal("INTERNAL_API_KEY wajib diisi")
 	}
 
 	return cfg

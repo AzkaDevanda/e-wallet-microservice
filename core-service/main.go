@@ -56,18 +56,22 @@ func main() {
 	userService := service.NewUserService(transactor, userRepo, walletRepo, jwtManager)
 	walletService := service.NewWalletService(walletRepo)
 	transactionService := service.NewTransactionService(transactor, walletRepo, transactionRepo)
+	walletDebitService := service.NewWalletDebitService(transactor, walletRepo, transactionRepo)
 
 	userHandler := handler.NewUserHandler(userService)
 	walletHandler := handler.NewWalletHandler(walletService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
+	internalWalletHandler := handler.NewInternalWalletHandler(walletService, walletDebitService)
 
 	// 4. Router
 	r := router.New(router.Deps{
-		Health:      handler.Health(sqlDB),
-		Auth:        middleware.Auth(jwtManager),
-		User:        userHandler,
-		Wallet:      walletHandler,
-		Transaction: transactionHandler,
+		Health:       handler.Health(sqlDB),
+		Auth:         middleware.Auth(jwtManager),
+		InternalAuth: middleware.InternalAuth(cfg.InternalAPIKey),
+		User:         userHandler,
+		Wallet:       walletHandler,
+		Transaction:  transactionHandler,
+		Internal:     internalWalletHandler,
 	})
 
 	// 5. Jalankan server di goroutine, lalu tunggu sinyal berhenti

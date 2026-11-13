@@ -8,11 +8,13 @@ import (
 
 // Deps berisi semua handler dan middleware yang dibutuhkan router.
 type Deps struct {
-	Health      gin.HandlerFunc
-	Auth        gin.HandlerFunc
-	User        *handler.UserHandler
-	Wallet      *handler.WalletHandler
-	Transaction *handler.TransactionHandler
+	Health       gin.HandlerFunc
+	Auth         gin.HandlerFunc
+	InternalAuth gin.HandlerFunc
+	User         *handler.UserHandler
+	Wallet       *handler.WalletHandler
+	Transaction  *handler.TransactionHandler
+	Internal     *handler.InternalWalletHandler
 }
 
 func New(d Deps) *gin.Engine {
@@ -35,6 +37,12 @@ func New(d Deps) *gin.Engine {
 	transactions.POST("/topup", d.Transaction.TopUp)
 	transactions.POST("/transfer", d.Transaction.Transfer)
 	transactions.GET("/history", d.Transaction.History)
+
+	// Internal: hanya untuk panggilan antar service, dilindungi API key
+	// sengaja di luar /api/v1, dan nanti tidak di route oleh gateway
+	internal := r.Group("/internal", d.InternalAuth)
+	internal.GET("/wallets/:userID/balance", d.Internal.GetBalance)
+	internal.POST("/wallets/:userID/debit", d.Internal.Debit)
 
 	return r
 }
