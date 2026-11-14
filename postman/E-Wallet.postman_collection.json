@@ -11,7 +11,7 @@
     ]
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "baseUrl", "value": "http://localhost:8081/api/v1" },
     { "key": "userEmail", "value": "" },
     { "key": "userPassword", "value": "rahasia123" },
     { "key": "userID", "value": "" },
@@ -23,7 +23,8 @@
     { "key": "internalApiKey", "value": "" },
     { "key": "debitRef", "value": "" },
     { "key": "balanceBefore", "value": "" },
-    { "key": "debitTxID", "value": "" }
+    { "key": "debitTxID", "value": "" },
+    { "key": "paymentBaseUrl", "value": "http://localhost:8082/api/v1" }
   ],
   "item": [
     {
@@ -453,7 +454,7 @@
       ]
     },
     {
-      "name": "5. Payment (Step 8)",
+      "name": "5. Payment (Step 8, payment-service)",
       "item": [
         {
           "name": "Pay - buat sesi pending",
@@ -482,7 +483,7 @@
               "mode": "raw",
               "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 50000,\n  \"description\": \"Coffee and croissant\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": { "raw": "{{paymentBaseUrl}}/transactions/pay", "host": ["{{paymentBaseUrl}}"], "path": ["transactions", "pay"] }
           }
         },
         {
@@ -505,8 +506,8 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
             }
           }
@@ -528,8 +529,8 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
             }
           }
@@ -554,7 +555,7 @@
               "mode": "raw",
               "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 99999999\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": { "raw": "{{paymentBaseUrl}}/transactions/pay", "host": ["{{paymentBaseUrl}}"], "path": ["transactions", "pay"] }
           }
         },
         {
@@ -573,8 +574,8 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{$guid}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{$guid}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{$guid}}", "confirm"]
             }
           }
