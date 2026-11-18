@@ -1,14 +1,107 @@
+# Step 14: semua service dalam satu compose.
+#
+#   docker compose up -d                       → hanya 2 database (untuk `go run` lokal, seperti Step 11-13)
+#   docker compose --profile app up -d --build → full stack: 2 database + core + payment + gateway
+#
+# Dari luar, HANYA gateway (:8080) dan database (untuk DBeaver) yang dibuka.
+# core-service dan payment-service tidak punya `ports`, jadi /internal/... tidak bisa diakses dari laptop/internet;
+# hanya bisa dari container lain di jaringan compose (payment-service → core-service).
+#
+# Secret (JWT_SECRET, INTERNAL_API_KEY) dibaca dari file .env di folder ini (lihat .env.example).
+
 services:
-  postgres:
+  core-db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: e_wallet_microservice
+      POSTGRES_DB: core_db
     ports:
-      - "5433:5432"
+      - "${CORE_DB_PORT:-5433}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - core-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d core_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  payment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payment_db
+    ports:
+      - "${PAYMENT_DB_PORT:-5434}:5432"
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  core-service:
+    profiles: ["app"]
+    build: ./core-service
+    environment:
+      APP_PORT: "8081"
+      DB_HOST: core-db # nama service = hostname di jaringan compose
+      DB_PORT: "5432" # port DI DALAM jaringan, bukan 5433
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: core_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:-}
+      TOKEN_TTL: ${TOKEN_TTL:-24h}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      GIN_MODE: release
+    depends_on:
+      core-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  payment-service:
+    profiles: ["app"]
+    build: ./payment-service
+    environment:
+      APP_PORT: "8082"
+      DB_HOST: payment-db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payment_db
+      DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      CORE_SERVICE_URL: http://core-service:8081
+      CORE_HTTP_TIMEOUT: ${CORE_HTTP_TIMEOUT:-5s}
+      PAYMENT_TTL: ${PAYMENT_TTL:-10m}
+      PAYMENT_EXPIRY_INTERVAL: ${PAYMENT_EXPIRY_INTERVAL:-30s}
+      PAYMENT_RECONCILE_GRACE: ${PAYMENT_RECONCILE_GRACE:-1m}
+      GIN_MODE: release
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      core-service:
+        condition: service_started
+    restart: unless-stopped
+
+  api-gateway:
+    profiles: ["app"]
+    build: ./api-gateway
+    environment:
+      APP_PORT: "8080"
+      CORE_SERVICE_URL: http://core-service:8081
+      PAYMENT_SERVICE_URL: http://payment-service:8082
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      - core-service
+      - payment-service
+    restart: unless-stopped
 
 volumes:
-  pgdata:
+  core-db-data:
+  payment-db-data:

@@ -18,7 +18,14 @@
     { "key": "token", "value": "" },
     { "key": "receiverEmail", "value": "" },
     { "key": "receiverUserID", "value": "" },
-    { "key": "paymentID", "value": "" }
+    { "key": "paymentID", "value": "" },
+    { "key": "coreUrl", "value": "http://localhost:8081" },
+    { "key": "internalApiKey", "value": "" },
+    { "key": "debitRef", "value": "" },
+    { "key": "balanceBefore", "value": "" },
+    { "key": "debitTxID", "value": "" },
+    { "key": "paymentBaseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "gatewayUrl", "value": "http://localhost:8080" }
   ],
   "item": [
     {
@@ -448,7 +455,7 @@
       ]
     },
     {
-      "name": "5. Payment (Step 8)",
+      "name": "5. Payment (payment-service, lewat gateway)",
       "item": [
         {
           "name": "Pay - buat sesi pending",
@@ -477,7 +484,7 @@
               "mode": "raw",
               "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 50000,\n  \"description\": \"Coffee and croissant\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": { "raw": "{{paymentBaseUrl}}/transactions/pay", "host": ["{{paymentBaseUrl}}"], "path": ["transactions", "pay"] }
           }
         },
         {
@@ -500,8 +507,8 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
             }
           }
@@ -523,8 +530,8 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{paymentID}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
             }
           }
@@ -549,7 +556,7 @@
               "mode": "raw",
               "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 99999999\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": { "raw": "{{paymentBaseUrl}}/transactions/pay", "host": ["{{paymentBaseUrl}}"], "path": ["transactions", "pay"] }
           }
         },
         {
@@ -568,9 +575,618 @@
           "request": {
             "method": "POST",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{$guid}}/confirm",
-              "host": ["{{baseUrl}}"],
+              "raw": "{{paymentBaseUrl}}/transactions/pay/{{$guid}}/confirm",
+              "host": ["{{paymentBaseUrl}}"],
               "path": ["transactions", "pay", "{{$guid}}", "confirm"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Internal core-service (Step 12 & 14, langsung ke :8081, hanya mode go run)",
+      "description": "Endpoint antar service. Dipanggil langsung ke core-service ({{coreUrl}}), BUKAN lewat {{baseUrl}}/gateway.\n\nSebelum menjalankan: isi variabel collection `internalApiKey` dengan nilai INTERNAL_API_KEY di core-service/.env.\nFolder ini memakai `noauth`: JWT user tidak dipakai di sini, yang dipakai header X-Internal-API-Key.\nJalankan setelah folder 2-4 (butuh {{userID}} yang sudah punya saldo).",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Internal balance - tanpa API key (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('code UNAUTHORIZED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal balance - JWT user saja, tanpa key (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Token user yang valid tetap DITOLAK: endpoint internal hanya menerima API key service.",
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal balance (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field userID & balance', () => pm.expect(body).to.have.keys('userID', 'balance'));",
+                  "pm.test('saldo cukup untuk debit 10000', () => pm.expect(body.balance).to.be.at.least(10000));",
+                  "pm.collectionVariables.set('balanceBefore', body.balance);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit (200, replayed false)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// referenceID baru setiap kali dijalankan. Di Step 13 nilai ini adalah ID payment.",
+                  "pm.collectionVariables.set('debitRef', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('replayed false (debit baru)', () => pm.expect(body.replayed).to.eql(false));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('saldo berkurang 10000', () => pm.expect(body.newBalance).to.eql(before - 10000));",
+                  "pm.collectionVariables.set('debitTxID', body.transactionID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - retry referenceID sama (200, replayed true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('replayed true (TIDAK dipotong lagi)', () => pm.expect(body.replayed).to.eql(true));",
+                  "pm.test('transactionID sama dengan debit pertama', () => pm.expect(body.transactionID).to.eql(pm.collectionVariables.get('debitTxID')));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('saldo tetap (hanya terpotong sekali)', () => pm.expect(body.newBalance).to.eql(before - 10000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - referenceID sama, amount beda (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('code IDEMPOTENCY_CONFLICT', () => pm.expect(pm.response.json().code).to.eql('IDEMPOTENCY_CONFLICT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 5000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - saldo tidak cukup (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code INSUFFICIENT_BALANCE', () => pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_BALANCE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000000,\n  \"referenceID\": \"{{$guid}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - body invalid, tanpa referenceID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code INVALID_REQUEST', () => pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - wallet tidak ada (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code WALLET_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('WALLET_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{$guid}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{$guid}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"referenceID\": \"{{$guid}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Internal balance - setelah semua debit (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('total terpotong tepat 10000 (sekali)', () => pm.expect(pm.response.json().balance).to.eql(before - 10000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - payment yang sudah dikonfirmasi (200, Step 14)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dipakai reconciler payment-service: 'apakah payment ini sudah memotong saldo?'",
+                  "// Jalankan setelah folder 5 (paymentID sudah confirm).",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('userID cocok', () => pm.expect(b.userID).to.eql(pm.collectionVariables.get('userID')));",
+                  "pm.test('ada amount, createdAt, balance', () => { pm.expect(b.amount).to.be.above(0); pm.expect(b.createdAt).to.be.a('string'); pm.expect(b).to.have.property('balance'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{paymentID}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{paymentID}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - referenceID belum pernah didebit (404 DEBIT_NOT_FOUND)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code DEBIT_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('DEBIT_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{$guid}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{$guid}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Gateway (Step 14)",
+      "item": [
+        {
+          "name": "Gateway health (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/healthz",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway menolak /internal walau key benar (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Endpoint internal tidak pernah di-route oleh gateway: dari luar, ia seolah tidak ada.",
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway: path tidak dikenal (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/tidak-ada",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "tidak-ada"
+              ]
             }
           }
         }
