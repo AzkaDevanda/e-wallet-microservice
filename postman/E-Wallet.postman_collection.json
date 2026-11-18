@@ -11,7 +11,7 @@
     ]
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8081/api/v1" },
+    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
     { "key": "userEmail", "value": "" },
     { "key": "userPassword", "value": "rahasia123" },
     { "key": "userID", "value": "" },
@@ -24,7 +24,8 @@
     { "key": "debitRef", "value": "" },
     { "key": "balanceBefore", "value": "" },
     { "key": "debitTxID", "value": "" },
-    { "key": "paymentBaseUrl", "value": "http://localhost:8082/api/v1" }
+    { "key": "paymentBaseUrl", "value": "http://localhost:8080/api/v1" },
+    { "key": "gatewayUrl", "value": "http://localhost:8080" }
   ],
   "item": [
     {
@@ -454,7 +455,7 @@
       ]
     },
     {
-      "name": "5. Payment (Step 8, payment-service)",
+      "name": "5. Payment (payment-service, lewat gateway)",
       "item": [
         {
           "name": "Pay - buat sesi pending",
@@ -583,7 +584,7 @@
       ]
     },
     {
-      "name": "6. Internal core-service (Step 12)",
+      "name": "6. Internal core-service (Step 12 & 14, langsung ke :8081, hanya mode go run)",
       "description": "Endpoint antar service. Dipanggil langsung ke core-service ({{coreUrl}}), BUKAN lewat {{baseUrl}}/gateway.\n\nSebelum menjalankan: isi variabel collection `internalApiKey` dengan nilai INTERNAL_API_KEY di core-service/.env.\nFolder ini memakai `noauth`: JWT user tidak dipakai di sini, yang dipakai header X-Internal-API-Key.\nJalankan setelah folder 2-4 (butuh {{userID}} yang sudah punya saldo).",
       "auth": {
         "type": "noauth"
@@ -1015,6 +1016,176 @@
                 "wallets",
                 "{{userID}}",
                 "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - payment yang sudah dikonfirmasi (200, Step 14)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dipakai reconciler payment-service: 'apakah payment ini sudah memotong saldo?'",
+                  "// Jalankan setelah folder 5 (paymentID sudah confirm).",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('userID cocok', () => pm.expect(b.userID).to.eql(pm.collectionVariables.get('userID')));",
+                  "pm.test('ada amount, createdAt, balance', () => { pm.expect(b.amount).to.be.above(0); pm.expect(b.createdAt).to.be.a('string'); pm.expect(b).to.have.property('balance'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{paymentID}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{paymentID}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - referenceID belum pernah didebit (404 DEBIT_NOT_FOUND)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code DEBIT_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('DEBIT_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{$guid}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{$guid}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Gateway (Step 14)",
+      "item": [
+        {
+          "name": "Gateway health (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/healthz",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway menolak /internal walau key benar (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Endpoint internal tidak pernah di-route oleh gateway: dari luar, ia seolah tidak ada.",
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway: path tidak dikenal (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/tidak-ada",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "tidak-ada"
               ]
             }
           }
