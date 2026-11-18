@@ -53,6 +53,15 @@ type debitResponse struct {
 	Replayed      bool   `json:"replayed"`
 }
 
+type debitRecordResponse struct {
+	TransactionID string    `json:"transactionID"`
+	UserID        uuid.UUID `json:"userID"`
+	Amount        int64     `json:"amount"`
+	MerchantID    string    `json:"merchantID"`
+	CreatedAt     time.Time `json:"createdAt"`
+	Balance       int64     `json:"balance"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 	Code  string `json:"code"`
@@ -87,10 +96,28 @@ func (c *CoreWalletClient) DebitForPayment(ctx context.Context, userID uuid.UUID
 	return out.NewBalance, nil
 }
 
+// FindDebit implements [service.WalletGateway] (Step 14)
+func (c *CoreWalletClient) FindDebit(ctx context.Context, paymentID uuid.UUID) (*service.DebitRecord, error) {
+	var out debitRecordResponse
+	path := "/internal/debits/" + paymentID.String()
+	if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &service.DebitRecord{
+		TransactionID: out.TransactionID,
+		UserID:        out.UserID,
+		Amount:        out.Amount,
+		MerchantID:    out.MerchantID,
+		CreatedAt:     out.CreatedAt,
+		Balance:       out.Balance,
+	}, nil
+}
+
 // do mengirim request ke core lalu menerjemahkan hasilnya:
 // - 200 -> decode body ke out
 // - code INSUFFICIENT_BALANCE -> service.ErrInsufficientBalance
 // - code WALLET_NOT_FOUND -> service.ErrWalletNotFound
+// - code DEBIT_NOT_FOUND -> service.ErrDebitNotFound (Step 14)
 // - gagal koneksi/ time out / 5xx -> service.ErrCoreUnavailable (aman untuk dicoba lagi)
 // - lainnya (401,409,400) -> error biasa: ada yang salah di konfigurasi atau kode
 func (c *CoreWalletClient) do(ctx context.Context, method, path string, body any, out any) error {
@@ -135,10 +162,11 @@ func (c *CoreWalletClient) do(ctx context.Context, method, path string, body any
 		return service.ErrInsufficientBalance
 	case "WALLET_NOT_FOUND":
 		return service.ErrWalletNotFound
+	case "DEBIT_NOT_FOUND":
+		return service.ErrDebitNotFound
 	}
 	if resp.StatusCode >= http.StatusInternalServerError {
 		return fmt.Errorf("%w: %s %s: status %d %s", service.ErrCoreUnavailable, method, path, resp.StatusCode, e.Code)
 	}
 	return fmt.Errorf("core %s %s: status %d %s: %s", method, path, resp.StatusCode, e.Code, e.Error)
-
 }

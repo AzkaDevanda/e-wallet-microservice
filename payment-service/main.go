@@ -54,7 +54,7 @@ func main() {
 	paymentRepo := repository.NewPaymentRepository(db)
 
 	walletGateway := client.NewCoreWalletClient(cfg.CoreServiceURL, cfg.InternalAPIKey, cfg.CoreHTTPTimeout)
-	paymentService := service.NewPaymentService(transactor, paymentRepo, walletGateway, cfg.PaymentTTL)
+	paymentService := service.NewPaymentService(transactor, paymentRepo, walletGateway, cfg.PaymentTTL, cfg.PaymentReconcileGrace)
 
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 
@@ -65,8 +65,8 @@ func main() {
 		Payment: paymentHandler,
 	})
 
-	// 5. Background worker untuk payment yang kedaluwarsa
-	go worker.RunPaymentExpiry(ctx, paymentService, cfg.PaymentExpiryInterval)
+	// 5. Background worker: rekonsiliasi payment kedaluwarsa (Step 14: tanya core dulu, baru expired)
+	go worker.RunPaymentReconciler(ctx, paymentService, cfg.PaymentExpiryInterval)
 
 	// 6. Jalankan server di goroutine, lalu tunggu sinyal berhenti
 	srv := &http.Server{

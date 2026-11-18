@@ -29,6 +29,9 @@ type Config struct {
 
 	PaymentTTL            time.Duration
 	PaymentExpiryInterval time.Duration
+	// PaymentReconcileGrace (Step 14): jeda setelah expires_at sebelum payment boleh dinyatakan expired.
+	// Wajib > CoreHTTPTimeout, supaya debit yang jawabannya terlambat sudah pasti tercatat di core.
+	PaymentReconcileGrace time.Duration
 }
 
 // LoadConfig baca file .env dan kembaliin struct confignya
@@ -54,6 +57,7 @@ func LoadConfig() *Config {
 
 		PaymentTTL:            getDuration("PAYMENT_TTL", 10*time.Minute),
 		PaymentExpiryInterval: getDuration("PAYMENT_EXPIRY_INTERVAL", 30*time.Second),
+		PaymentReconcileGrace: getDuration("PAYMENT_RECONCILE_GRACE", time.Minute),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -61,6 +65,10 @@ func LoadConfig() *Config {
 	}
 	if cfg.InternalAPIKey == "" {
 		log.Fatal("INTERNAL_API_KEY wajib diisi")
+	}
+	if cfg.PaymentReconcileGrace <= cfg.CoreHTTPTimeout {
+		log.Fatalf("PAYMENT_RECONCILE_GRACE (%s) harus lebih besar dari CORE_HTTP_TIMEOUT (%s)",
+			cfg.PaymentReconcileGrace, cfg.CoreHTTPTimeout)
 	}
 
 	return cfg

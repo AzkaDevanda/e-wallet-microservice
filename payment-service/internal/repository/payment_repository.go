@@ -15,7 +15,10 @@ type PaymentRepository interface {
 	Create(ctx context.Context, payment *model.Payment) error
 	FindByIDForUpdate(ctx context.Context, id, userID uuid.UUID) (*model.Payment, error)
 	Save(ctx context.Context, payment *model.Payment) error
-	ExpirePending(ctx context.Context, now time.Time) (int64, error)
+	// Step 14: pengganti ExpirePending. Worker tidak lagi meng-UPDATE massal,
+	// tapi memeriksa payment satu per satu ke core sebelum menandai expired.
+	ListOverduePendingIDs(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error)
+	LockPendingByID(ctx context.Context, id uuid.UUID) (*model.Payment, error)
 }
 
 type paymentRepository struct {
@@ -27,18 +30,36 @@ func (r *paymentRepository) Create(ctx context.Context, payment *model.Payment) 
 	return dbFromContext(ctx, r.db).Create(payment).Error
 }
 
-// ExpirePending implements [PaymentRepository].
-// ExpirePending menandai semua payment pending yang sudah lewat batas waktu sebagai expired.
-// SQL: UPDATE payments SET status = 'expired', updated_at = ? WHERE status = 'pending' AND expires_at <= ?
-func (r *paymentRepository) ExpirePending(ctx context.Context, now time.Time) (int64, error) {
-	result := dbFromContext(ctx, r.db).
+// ListOverduePendingIDs implements [PaymentRepository].
+// SQL: SELECT id FROM payments WHERE status = 'pending' AND expires_at <= ? ORDER BY expires_at LIMIT ?
+func (r *paymentRepository) ListOverduePendingIDs(ctx context.Context, before time.Time, limit int) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
+	err := dbFromContext(ctx, r.db).
 		Model(&model.Payment{}).
-		Where("status = ? AND expires_at <= ?", model.PaymentPending, now).
-		Updates(map[string]any{
-			"status":     model.PaymentExpired,
-			"updated_at": now,
-		})
-	return result.RowsAffected, result.Error
+		Where("status = ? AND expires_at <= ?", model.PaymentPending, before).
+		Order("expires_at").
+		Limit(limit).
+		Pluck("id", &ids).Error
+	return ids, err
+}
+
+// LockPendingByID implements [PaymentRepository].
+// Mengunci satu payment pending. SKIP LOCKED: kalau baris sedang dikunci (misalnya confirm sedang berjalan),
+// jangan menunggu, lewati saja; worker akan mencobanya lagi di putaran berikutnya.
+// SQL: SELECT * FROM payments WHERE id = ? AND status = 'pending' LIMIT 1 FOR UPDATE SKIP LOCKED
+func (r *paymentRepository) LockPendingByID(ctx context.Context, id uuid.UUID) (*model.Payment, error) {
+	var payment model.Payment
+	err := dbFromContext(ctx, r.db).
+		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+		Where("id = ? AND status = ?", id, model.PaymentPending).
+		First(&payment).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &payment, nil
 }
 
 // FindByIDForUpdate implements [PaymentRepository].
