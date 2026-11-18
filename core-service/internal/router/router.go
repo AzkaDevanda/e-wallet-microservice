@@ -43,6 +43,7 @@ func New(d Deps) *gin.Engine {
 	internal := r.Group("/internal", d.InternalAuth)
 	internal.GET("/wallets/:userID/balance", d.Internal.GetBalance)
 	internal.POST("/wallets/:userID/debit", d.Internal.Debit)
+	internal.GET("/debits/:referenceID", d.Internal.GetDebit) // Step 14: rekonsiliasi
 
 	return r
 }

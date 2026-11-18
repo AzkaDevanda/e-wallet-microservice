@@ -14,6 +14,9 @@ import (
 // (user, amount, atau merchant lain). ini bukan retry tapi kesalahan pemanggil
 var ErrIdempotencyConflict = errors.New("referenceID already used with different data")
 
+// ErrDebitNotFound: belum pernah ada debit dengan referenceID ini (Step 14, dipakai rekonsiliasi)
+var ErrDebitNotFound = errors.New("debit not found")
+
 // DebitInput adalah permintaan potong saldo dari payment-service
 type DebitInput struct {
 	UserID      uuid.UUID
@@ -34,6 +37,9 @@ type DebitResult struct {
 // Dipanggil oleh endpoint internal, bukan oleh user
 type WalletDebitService interface {
 	Debit(ctx context.Context, in DebitInput) (*DebitResult, error)
+	// FindDebit mencari debit pembayaran berdasarkan referenceID (= paymentID). Read-only.
+	// Dipakai payment-service untuk rekonsiliasi: "apakah payment ini sebenarnya sudah dibayar?"
+	FindDebit(ctx context.Context, referenceID uuid.UUID) (*model.Transaction, error)
 }
 
 type walletDebitService struct {
@@ -114,6 +120,18 @@ func (w *walletDebitService) Debit(ctx context.Context, in DebitInput) (*DebitRe
 
 	return result, nil
 
+}
+
+// FindDebit implements [WalletDebitService].
+func (w *walletDebitService) FindDebit(ctx context.Context, referenceID uuid.UUID) (*model.Transaction, error) {
+	trx, err := w.transactionRepo.FindByReference(ctx, referenceID, model.TransactionPayment)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrDebitNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find by reference: %w", err)
+	}
+	return trx, nil
 }
 
 func NewWalletDebitService(

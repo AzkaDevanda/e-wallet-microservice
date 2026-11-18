@@ -89,7 +89,7 @@ func (h *InternalWalletHandler) Debit(c *gin.Context) {
 		writeInternalError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", err.Error())
 		return
 	case err != nil:
-		log.Printf("internal debit error:: %v", err)
+		log.Printf("internal debit error: %v", err)
 		writeInternalError(c, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "internal server error")
 		return
 	}
@@ -100,6 +100,44 @@ func (h *InternalWalletHandler) Debit(c *gin.Context) {
 		TransactionID: result.Transaction.ID.String(),
 		NewBalance:    result.NewBalance,
 		Replayed:      result.Replayed,
+	})
+}
+
+// GetDebit menangani GET /internal/debits/:referenceID (Step 14)
+// Read-only: hanya menjawab "apakah referenceID ini sudah memotong saldo?". Tidak pernah memotong apa pun.
+func (h *InternalWalletHandler) GetDebit(c *gin.Context) {
+	referenceID, err := uuid.Parse(c.Param("referenceID"))
+	if err != nil {
+		writeInternalError(c, http.StatusBadRequest, "INVALID_REQUEST", "invalid reference id")
+		return
+	}
+
+	trx, err := h.debitService.FindDebit(c.Request.Context(), referenceID)
+	if errors.Is(err, service.ErrDebitNotFound) {
+		writeInternalError(c, http.StatusNotFound, "DEBIT_NOT_FOUND", err.Error())
+		return
+	}
+	if err != nil {
+		log.Printf("internal get debit error: %v", err)
+		writeInternalError(c, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "internal server error")
+		return
+	}
+
+	wallet, err := h.walletService.GetBalance(c.Request.Context(), trx.UserID)
+	if err != nil {
+		// Debit ada tapi wallet tidak bisa dibaca: ini bukan "belum dibayar", jadi jangan jawab 404
+		log.Printf("internal get debit (balance) error: %v", err)
+		writeInternalError(c, http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "internal server error")
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.DebitRecordResponse{
+		TransactionID: trx.ID.String(),
+		UserID:        trx.UserID.String(),
+		Amount:        trx.Amount,
+		MerchantID:    trx.To,
+		CreatedAt:     trx.CreatedAt,
+		Balance:       wallet.Balance,
 	})
 }
 
