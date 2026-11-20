@@ -11,24 +11,21 @@ import (
 
 const (
 	apiPrefix  = "/api/v1/"
-	payExact   = "/api/v1/transactions/pay"
-	payPrefix  = "/api/v1/transactions/pay/"
 	healthPath = "/healthz"
 )
 
 // Upstreams adalah handler proxy untuk setiap service.
+// Payment-service tidak lagi menerima request dari luar (ia hanya consumer RabbitMQ),
+// jadi gateway cukup meneruskan semua /api/v1/... ke core-service.
 type Upstreams struct {
-	Core    http.Handler
-	Payment http.Handler
+	Core http.Handler
 }
 
 // New membuat handler gateway. Aturan routing (urutan penting):
 //
 //	/healthz                         → dijawab gateway sendiri
 //	path tidak bersih (.., //)       → 404 (mencegah /api/v1/../internal/...)
-//	/api/v1/transactions/pay         → payment-service
-//	/api/v1/transactions/pay/...     → payment-service
-//	/api/v1/...                      → core-service
+//	/api/v1/...                      → core-service (termasuk /transactions/pay)
 //	lainnya, termasuk /internal/...  → 404 (endpoint internal TIDAK PERNAH dibuka ke luar)
 func New(u Upstreams) http.Handler {
 	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,8 +37,6 @@ func New(u Upstreams) http.Handler {
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		case !isClean(p):
 			proxy.WriteError(w, http.StatusNotFound, "not found")
-		case p == payExact || strings.HasPrefix(p, payPrefix):
-			u.Payment.ServeHTTP(w, r)
 		case strings.HasPrefix(p, apiPrefix):
 			u.Core.ServeHTTP(w, r)
 		default:
@@ -51,13 +46,11 @@ func New(u Upstreams) http.Handler {
 	return logRequests(mux)
 }
 
-// Target memberi tahu ke mana sebuah path akan diteruskan ("payment", "core", atau ""). Dipakai log dan test.
+// Target memberi tahu ke mana sebuah path akan diteruskan ("core" atau ""). Dipakai log dan test.
 func Target(p string) string {
 	switch {
 	case p == healthPath || !isClean(p):
 		return ""
-	case p == payExact || strings.HasPrefix(p, payPrefix):
-		return "payment"
 	case strings.HasPrefix(p, apiPrefix):
 		return "core"
 	default:

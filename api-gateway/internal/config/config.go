@@ -11,11 +11,8 @@ type Config struct {
 	AppPort string
 
 	// Alamat service di belakang gateway. Di docker-compose: nama service (http://core-service:8081).
-	CoreServiceURL    *url.URL
-	PaymentServiceURL *url.URL
-
-	// UpstreamTimeout = batas waktu menunggu jawaban core/payment.
-	// Harus lebih besar dari CORE_HTTP_TIMEOUT payment-service, karena confirm menunggu core dulu.
+	CoreServiceURL *url.URL
+	// UpstreamTimeout = batas waktu menunggu jawaban core.
 	UpstreamTimeout time.Duration
 }
 
@@ -23,10 +20,9 @@ type Config struct {
 // ia tidak memeriksa JWT (itu tugas tiap service) dan tidak tahu INTERNAL_API_KEY.
 func LoadConfig() *Config {
 	return &Config{
-		AppPort:           getEnv("APP_PORT", "8080"),
-		CoreServiceURL:    mustURL("CORE_SERVICE_URL", "http://localhost:8081"),
-		PaymentServiceURL: mustURL("PAYMENT_SERVICE_URL", "http://localhost:8082"),
-		UpstreamTimeout:   getDuration("UPSTREAM_TIMEOUT", 15*time.Second),
+		AppPort:         getEnv("APP_PORT", "8080"),
+		CoreServiceURL:  mustURL("CORE_SERVICE_URL", "http://localhost:8081"),
+		UpstreamTimeout: getDuration("UPSTREAM_TIMEOUT", 15*time.Second),
 	}
 }
 
