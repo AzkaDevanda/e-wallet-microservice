@@ -1,10 +1,12 @@
-# Part 3: semua service + RabbitMQ dalam satu compose.
+# Part 4: deploy semua service dengan Docker Compose.
 #
-#   docker compose up -d                       → 2 database + RabbitMQ (untuk `go run` lokal)
-#   docker compose --profile app up -d --build → full stack: 2 database + RabbitMQ + core + payment + gateway
+#   docker compose up -d --build                      → full stack: 2 database + RabbitMQ + core + payment + gateway
+#   docker compose up -d core-db payment-db rabbitmq  → infrastruktur saja (untuk `go run` lokal)
+#   docker ps                                         → core-service & payment-service harus "Up ... (healthy)"
 #
 # Dari luar, yang dibuka hanya: gateway (:8080), database (untuk DBeaver), dan RabbitMQ (:5672 AMQP, :15672 dashboard).
 # core-service dan payment-service tidak punya `ports`, jadi /internal/... tidak bisa diakses dari laptop/internet.
+# Healthcheck core-service dan payment-service didefinisikan di Dockerfile masing-masing (`/app -healthcheck`).
 #
 # Secret (JWT_SECRET, INTERNAL_API_KEY) dibaca dari file .env di folder ini (lihat .env.example).
 
@@ -41,8 +43,7 @@ services:
       timeout: 3s
       retries: 30
 
-  # Part 3: message broker. Tanpa profile, supaya ikut menyala di mode `go run`.
-  # Dashboard: http://localhost:15672 (guest / guest)
+  # Message broker. Dashboard: http://localhost:15672 (guest / guest)
   rabbitmq:
     image: rabbitmq:3.13-management
     hostname: rabbitmq # data RabbitMQ disimpan per hostname; dibuat tetap supaya volume tetap terpakai
@@ -58,8 +59,7 @@ services:
       retries: 20
 
   core-service:
-    profiles: ["app"]
-    build: ./core-service
+    build: ./core-service # memakai core-service/Dockerfile
     environment:
       APP_PORT: "8081"
       DB_HOST: core-db # nama service = hostname di jaringan compose
@@ -81,8 +81,7 @@ services:
     restart: unless-stopped
 
   payment-service:
-    profiles: ["app"]
-    build: ./payment-service
+    build: ./payment-service # memakai payment-service/Dockerfile
     environment:
       APP_PORT: "8082"
       DB_HOST: payment-db
@@ -105,11 +104,10 @@ services:
       rabbitmq:
         condition: service_healthy
       core-service:
-        condition: service_started
+        condition: service_healthy # tunggu core benar-benar siap menerima debit
     restart: unless-stopped
 
   api-gateway:
-    profiles: ["app"]
     build: ./api-gateway
     environment:
       APP_PORT: "8080"
@@ -117,7 +115,8 @@ services:
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
-      - core-service
+      core-service:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
