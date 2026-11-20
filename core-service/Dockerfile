@@ -16,4 +16,10 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/app /app
 EXPOSE 8081
 USER nonroot:nonroot
+
+# Exec form (tanpa shell, karena distroless tidak punya sh/curl): binary mengecek dirinya sendiri.
+# start-period: waktu untuk konek DB + RabbitMQ + migrasi sebelum kegagalan mulai dihitung.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["/app", "-healthcheck"]
+
 ENTRYPOINT ["/app"]

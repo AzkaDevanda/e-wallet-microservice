@@ -20,6 +20,11 @@ import (
 )
 
 func main() {
+	// Mode healthcheck: dipanggil Docker lewat `/app -healthcheck` (HEALTHCHECK di Dockerfile).
+	if len(os.Args) > 1 && os.Args[1] == "-healthcheck" {
+		os.Exit(runHealthCheck())
+	}
+
 	// ctx dibatalkan saat menerima Ctrl+C (SIGINT) atau SIGTERM (misalnya dari Docker).
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -100,4 +105,25 @@ func main() {
 	}
 	<-consumerDone // tunggu pesan yang sedang diproses selesai di-ack / dikembalikan ke queue
 	log.Println("server berhenti")
+}
+
+// runHealthCheck memanggil endpoint health milik proses yang sedang berjalan di container yang sama.
+// Return 0 = sehat, 1 = tidak sehat (aturan exit code HEALTHCHECK Docker).
+func runHealthCheck() int {
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "8082"
+	}
+
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/api/v1/health")
+	if err != nil {
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }

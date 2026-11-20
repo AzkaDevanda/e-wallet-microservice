@@ -12,7 +12,8 @@ type Deps struct {
 // HTTP server hanya untuk health check
 func New(d Deps) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	// Health dipanggil Docker setiap 10 detik; tidak perlu dicatat di log.
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/api/v1/health"}}), gin.Recovery())
 
 	api := r.Group("/api/v1")
 	api.GET("/health", d.Health)
