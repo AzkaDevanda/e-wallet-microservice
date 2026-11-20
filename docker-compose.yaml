@@ -1,11 +1,10 @@
-# Step 14: semua service dalam satu compose.
+# Part 3: semua service + RabbitMQ dalam satu compose.
 #
-#   docker compose up -d                       → hanya 2 database (untuk `go run` lokal, seperti Step 11-13)
-#   docker compose --profile app up -d --build → full stack: 2 database + core + payment + gateway
+#   docker compose up -d                       → 2 database + RabbitMQ (untuk `go run` lokal)
+#   docker compose --profile app up -d --build → full stack: 2 database + RabbitMQ + core + payment + gateway
 #
-# Dari luar, HANYA gateway (:8080) dan database (untuk DBeaver) yang dibuka.
-# core-service dan payment-service tidak punya `ports`, jadi /internal/... tidak bisa diakses dari laptop/internet;
-# hanya bisa dari container lain di jaringan compose (payment-service → core-service).
+# Dari luar, yang dibuka hanya: gateway (:8080), database (untuk DBeaver), dan RabbitMQ (:5672 AMQP, :15672 dashboard).
+# core-service dan payment-service tidak punya `ports`, jadi /internal/... tidak bisa diakses dari laptop/internet.
 #
 # Secret (JWT_SECRET, INTERNAL_API_KEY) dibaca dari file .env di folder ini (lihat .env.example).
 
@@ -42,6 +41,22 @@ services:
       timeout: 3s
       retries: 30
 
+  # Part 3: message broker. Tanpa profile, supaya ikut menyala di mode `go run`.
+  # Dashboard: http://localhost:15672 (guest / guest)
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq # data RabbitMQ disimpan per hostname; dibuat tetap supaya volume tetap terpakai
+    ports:
+      - "5672:5672" # AMQP, untuk aplikasi
+      - "15672:15672" # dashboard web
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq # queue durable + pesan persistent tetap ada setelah container dibuat ulang
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   core-service:
     profiles: ["app"]
     build: ./core-service
@@ -56,9 +71,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       TOKEN_TTL: ${TOKEN_TTL:-24h}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       GIN_MODE: release
     depends_on:
       core-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -73,16 +91,18 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: payment_db
       DB_SSLMODE: disable
-      JWT_SECRET: ${JWT_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       CORE_SERVICE_URL: http://core-service:8081
       CORE_HTTP_TIMEOUT: ${CORE_HTTP_TIMEOUT:-5s}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       PAYMENT_TTL: ${PAYMENT_TTL:-10m}
-      PAYMENT_EXPIRY_INTERVAL: ${PAYMENT_EXPIRY_INTERVAL:-30s}
-      PAYMENT_RECONCILE_GRACE: ${PAYMENT_RECONCILE_GRACE:-1m}
+      PAYMENT_PROCESSING_DELAY: ${PAYMENT_PROCESSING_DELAY:-2s}
+      PAYMENT_RETRY_DELAY: ${PAYMENT_RETRY_DELAY:-10s}
       GIN_MODE: release
     depends_on:
       payment-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       core-service:
         condition: service_started
@@ -94,14 +114,13 @@ services:
     environment:
       APP_PORT: "8080"
       CORE_SERVICE_URL: http://core-service:8081
-      PAYMENT_SERVICE_URL: http://payment-service:8082
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
       - core-service
-      - payment-service
     restart: unless-stopped
 
 volumes:
   core-db-data:
   payment-db-data:
+  rabbitmq-data:
