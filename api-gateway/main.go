@@ -21,8 +21,7 @@ func main() {
 	cfg := config.LoadConfig()
 
 	handler := router.New(router.Upstreams{
-		Core:    proxy.New("core-service", cfg.CoreServiceURL, cfg.UpstreamTimeout),
-		Payment: proxy.New("payment-service", cfg.PaymentServiceURL, cfg.UpstreamTimeout),
+		Core: proxy.New("core-service", cfg.CoreServiceURL, cfg.UpstreamTimeout),
 	})
 
 	srv := &http.Server{
@@ -35,8 +34,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("api-gateway berjalan di port %s (core: %s, payment: %s)",
-			cfg.AppPort, cfg.CoreServiceURL, cfg.PaymentServiceURL)
+		log.Printf("api-gateway berjalan di port %s (core: %s)", cfg.AppPort, cfg.CoreServiceURL)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server gagal berjalan: %v", err)
 		}

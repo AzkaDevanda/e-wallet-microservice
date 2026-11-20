@@ -20,14 +20,11 @@ func fakeUpstream(name string) *httptest.Server {
 
 func newGateway(t *testing.T) *httptest.Server {
 	t.Helper()
-	core, pay := fakeUpstream("core"), fakeUpstream("payment")
+	core := fakeUpstream("core")
 	t.Cleanup(core.Close)
-	t.Cleanup(pay.Close)
 	cu, _ := url.Parse(core.URL)
-	pu, _ := url.Parse(pay.URL)
 	gw := httptest.NewServer(New(Upstreams{
-		Core:    proxy.New("core-service", cu, 2*time.Second),
-		Payment: proxy.New("payment-service", pu, 2*time.Second),
+		Core: proxy.New("core-service", cu, 2*time.Second),
 	}))
 	t.Cleanup(gw.Close)
 	return gw
@@ -55,10 +52,9 @@ func TestRouting(t *testing.T) {
 		status       int
 		bodyPrefix   string
 	}{
-		{"POST", "/api/v1/transactions/pay", 200, "payment /api/v1/transactions/pay "},
-		{"POST", "/api/v1/transactions/pay/123/confirm", 200, "payment /api/v1/transactions/pay/123/confirm "},
 		{"POST", "/api/v1/transactions/topup", 200, "core "},
-		{"POST", "/api/v1/transactions/payment", 200, "core "}, // bukan /pay, jangan salah arah
+		{"POST", "/api/v1/transactions/pay", 200, "core /api/v1/transactions/pay "}, // Part 3: pay sekarang di core
+		{"GET", "/api/v1/transactions/pay/123", 200, "core /api/v1/transactions/pay/123 "},
 		{"GET", "/api/v1/transactions/history", 200, "core "},
 		{"POST", "/api/v1/users/login", 200, "core "},
 		{"GET", "/api/v1/health", 200, "core "},
@@ -93,13 +89,12 @@ func TestStripsInternalKeyAndKeepsAuthorization(t *testing.T) {
 func TestUpstreamDown_Returns502JSON(t *testing.T) {
 	dead, _ := url.Parse("http://127.0.0.1:1") // tidak ada yang listen
 	gw := httptest.NewServer(New(Upstreams{
-		Core:    proxy.New("core-service", dead, time.Second),
-		Payment: proxy.New("payment-service", dead, time.Second),
+		Core: proxy.New("core-service", dead, time.Second),
 	}))
 	defer gw.Close()
 
 	status, body := get(t, "POST", gw.URL+"/api/v1/transactions/pay", nil)
-	if status != http.StatusBadGateway || body != "{\"error\":\"payment-service is unavailable\"}\n" {
+	if status != http.StatusBadGateway || body != "{\"error\":\"core-service is unavailable\"}\n" {
 		t.Fatalf("got %d %q", status, body)
 	}
 }
@@ -111,8 +106,7 @@ func TestUpstreamSlow_Returns504(t *testing.T) {
 	defer slow.Close()
 	su, _ := url.Parse(slow.URL)
 	gw := httptest.NewServer(New(Upstreams{
-		Core:    proxy.New("core-service", su, 100*time.Millisecond),
-		Payment: proxy.New("payment-service", su, 100*time.Millisecond),
+		Core: proxy.New("core-service", su, 100*time.Millisecond),
 	}))
 	defer gw.Close()
 
