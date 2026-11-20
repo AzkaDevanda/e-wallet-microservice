@@ -19,19 +19,21 @@ type Config struct {
 	DBName     string
 	DBSSLMode  string
 
-	// JWTSecret harus SAMA dengan core-service: payment hanya memverifikasi token, tidak membuatnya.
-	JWTSecret string
-
 	// InternalAPIKey harus SAMA dengan core-service: dikirim di header X-Internal-API-Key.
 	InternalAPIKey  string
 	CoreServiceURL  string
 	CoreHTTPTimeout time.Duration
 
-	PaymentTTL            time.Duration
-	PaymentExpiryInterval time.Duration
-	// PaymentReconcileGrace (Step 14): jeda setelah expires_at sebelum payment boleh dinyatakan expired.
-	// Wajib > CoreHTTPTimeout, supaya debit yang jawabannya terlambat sudah pasti tercatat di core.
-	PaymentReconcileGrace time.Duration
+	RabbitMQURL string
+
+	// PaymentTTL: permintaan yang lebih tua dari ini (dihitung dari created_at di pesan) dinyatakan expired
+	PaymentTTL time.Duration
+	// PaymentProcessingDelay: simulasi lama pemrosesan (time.Sleep)
+	PaymentProcessingDelay time.Duration
+	// PaymentRetryDelay: jeda sebelum pesan yang gagal sementara (core mati) dikembalikan ke queue
+	// Dibuat lebih besar dari CoreHTTPTimeout, supaya debit yang jawabannya terlambat sudah selesai di core
+	// sebelum percobaan berikutnya bertanya "sudah dipotong atau belum"
+	PaymentRetryDelay time.Duration
 }
 
 // LoadConfig baca file .env dan kembaliin struct confignya
@@ -49,26 +51,24 @@ func LoadConfig() *Config {
 		DBName:     getEnv("DB_NAME", "payment_db"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 
-		JWTSecret: getEnv("JWT_SECRET", ""),
-
 		InternalAPIKey:  getEnv("INTERNAL_API_KEY", ""),
 		CoreServiceURL:  getEnv("CORE_SERVICE_URL", "http://localhost:8081"),
 		CoreHTTPTimeout: getDuration("CORE_HTTP_TIMEOUT", 5*time.Second),
 
-		PaymentTTL:            getDuration("PAYMENT_TTL", 10*time.Minute),
-		PaymentExpiryInterval: getDuration("PAYMENT_EXPIRY_INTERVAL", 30*time.Second),
-		PaymentReconcileGrace: getDuration("PAYMENT_RECONCILE_GRACE", time.Minute),
+		PaymentTTL: getDuration("PAYMENT_TTL", 10*time.Minute),
+
+		RabbitMQURL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+
+		PaymentProcessingDelay: getDuration("PAYMENT_PROCESSING_DELAY", 2*time.Second),
+		PaymentRetryDelay:      getDuration("PAYMENT_RETRY_DELAY", 10*time.Second),
 	}
 
-	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET wajib diisi")
-	}
 	if cfg.InternalAPIKey == "" {
 		log.Fatal("INTERNAL_API_KEY wajib diisi")
 	}
-	if cfg.PaymentReconcileGrace <= cfg.CoreHTTPTimeout {
-		log.Fatalf("PAYMENT_RECONCILE_GRACE (%s) harus lebih besar dari CORE_HTTP_TIMEOUT (%s)",
-			cfg.PaymentReconcileGrace, cfg.CoreHTTPTimeout)
+	if cfg.PaymentRetryDelay <= cfg.CoreHTTPTimeout {
+		log.Fatalf("PAYMENT_RETRY_DELAY (%s) harus lebih besar dari CORE_HTTP_TIMEOUT (%s)",
+			cfg.PaymentRetryDelay, cfg.CoreHTTPTimeout)
 	}
 
 	return cfg

@@ -14,6 +14,7 @@ type Deps struct {
 	User         *handler.UserHandler
 	Wallet       *handler.WalletHandler
 	Transaction  *handler.TransactionHandler
+	Payment      *handler.PaymentHandler
 	Internal     *handler.InternalWalletHandler
 }
 
@@ -37,6 +38,8 @@ func New(d Deps) *gin.Engine {
 	transactions.POST("/topup", d.Transaction.TopUp)
 	transactions.POST("/transfer", d.Transaction.Transfer)
 	transactions.GET("/history", d.Transaction.History)
+	transactions.POST("/pay", d.Payment.Pay)
+	transactions.GET("/pay/:id", d.Payment.GetStatus)
 
 	// Internal: hanya untuk panggilan antar service, dilindungi API key
 	// sengaja di luar /api/v1, dan nanti tidak di route oleh gateway

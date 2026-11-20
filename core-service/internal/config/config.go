@@ -22,7 +22,14 @@ type Config struct {
 	JWTSecret string
 	TokenTTL  time.Duration
 
-	InternalAPIKey string
+	// InternalAPIKey harus SAMA dengan core-service: dikirim di header X-Internal-API-Key
+	InternalAPIKey  string
+	CoreServiceURL  string
+	CoreHttpTimeout time.Duration
+
+	// RabbitMQURL alamat RabbitMQ. Di docker-compose hostnya "rabbitmq", saat go run "localhost".
+	RabbitMQURL string
+
 }
 
 // LoadConfig baca file .env dan kembaliin struct confignya
@@ -43,6 +50,10 @@ func LoadConfig() *Config {
 		TokenTTL:   getDuration("TOKEN_TTL", 24*time.Hour),
 
 		InternalAPIKey: getEnv("INTERNAL_API_KEY", ""),
+
+		RabbitMQURL: getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+
+
 	}
 
 	if cfg.JWTSecret == "" {
