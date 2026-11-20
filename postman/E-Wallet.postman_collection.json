@@ -1,31 +1,99 @@
 {
   "info": {
-    "name": "E-Wallet Microservice",
-    "description": "Test case assignment E-Wallet sesuai openapi.yaml.\n\nCara pakai:\n1. docker compose up -d\n2. go run .\n3. Jalankan folder secara berurutan (atau Collection Runner). Request Register membuat email unik setiap kali dijalankan, dan Login menyimpan token ke variabel {{token}} secara otomatis.\n\nFolder 1-2 bisa diuji sekarang (Step 3). Folder 3-5 baru berfungsi setelah step terkait selesai: Wallet (Step 4), Transactions (Step 5-7), Payment (Step 8).",
+    "name": "E-Wallet Microservice (Part 3: RabbitMQ)",
+    "description": "Test case E-Wallet: core-service, payment-service (consumer RabbitMQ), dan api-gateway.\n\nCara pakai (full Docker, default):\n1. cp .env.example .env, lalu isi JWT_SECRET dan INTERNAL_API_KEY\n2. docker compose --profile app up -d --build\n3. Run collection dari atas ke bawah. Register membuat email unik setiap kali dijalankan, dan Login menyimpan token ke {{token}} secara otomatis.\n\nVariabel penting:\n- baseUrl: http://localhost:8080/api/v1 (semua request lewat api-gateway).\n- goRunMode: false (default) = folder 6 di-skip. Set true kalau service dijalankan dengan go run, supaya folder 6 (core :8081 / payment :8082 langsung) ikut diuji.\n- paymentWaitMs: lama menunggu payment-service memproses pesan sebelum cek hasil (default 4000 ms; PAYMENT_PROCESSING_DELAY default 2s).\n- internalApiKey: isi dengan INTERNAL_API_KEY untuk folder 6.\n\nAlur folder 5 (asinkron): POST /transactions/pay → 202 pending → payment-service memproses pesan dari payment.queue → hasil ke status.queue → core meng-update status → GET /transactions/pay/{id} = completed.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
     "type": "bearer",
     "bearer": [
-      { "key": "token", "value": "{{token}}", "type": "string" }
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
     ]
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080/api/v1" },
-    { "key": "userEmail", "value": "" },
-    { "key": "userPassword", "value": "rahasia123" },
-    { "key": "userID", "value": "" },
-    { "key": "token", "value": "" },
-    { "key": "receiverEmail", "value": "" },
-    { "key": "receiverUserID", "value": "" },
-    { "key": "paymentID", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "userEmail",
+      "value": ""
+    },
+    {
+      "key": "userPassword",
+      "value": "rahasia123"
+    },
+    {
+      "key": "userID",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "receiverEmail",
+      "value": ""
+    },
+    {
+      "key": "receiverUserID",
+      "value": ""
+    },
+    {
+      "key": "paymentID",
+      "value": ""
+    },
+    {
+      "key": "coreUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "internalApiKey",
+      "value": ""
+    },
+    {
+      "key": "debitRef",
+      "value": ""
+    },
+    {
+      "key": "balanceBefore",
+      "value": ""
+    },
+    {
+      "key": "debitTxID",
+      "value": ""
+    },
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "balanceBeforePay",
+      "value": ""
+    },
+    {
+      "key": "paymentWaitMs",
+      "value": "4000"
+    },
+    {
+      "key": "paymentUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "goRunMode",
+      "value": "false"
+    }
   ],
   "item": [
     {
       "name": "1. Health",
       "item": [
         {
-          "name": "Health check",
+          "name": "Health core-service (200)",
           "event": [
             {
               "listen": "test",
@@ -39,15 +107,25 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "2. Users (Step 3)",
+      "name": "2. Users",
       "item": [
         {
           "name": "Register - success (201)",
@@ -80,14 +158,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
           }
         },
         {
@@ -114,14 +208,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"John Lagi\",\n  \"email\": \"{{upperEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
           }
         },
         {
@@ -139,14 +249,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"X\",\n  \"email\": \"bukan-email\",\n  \"password\": \"123\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
           }
         },
         {
@@ -166,14 +292,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "login"
+              ]
+            }
           }
         },
         {
@@ -191,14 +333,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"salah12345\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "login"
+              ]
+            }
           }
         },
         {
@@ -216,14 +374,30 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"tidakada.{{$timestamp}}@example.com\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/login", "host": ["{{baseUrl}}"], "path": ["users", "login"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "login"
+              ]
+            }
           }
         },
         {
@@ -250,20 +424,36 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"{{receiverEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/users/register", "host": ["{{baseUrl}}"], "path": ["users", "register"] }
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "3. Wallet (Step 4)",
+      "name": "3. Wallet",
       "item": [
         {
           "name": "Get balance (200)",
@@ -283,7 +473,16 @@
           ],
           "request": {
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+            "url": {
+              "raw": "{{baseUrl}}/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "balance"
+              ]
+            }
           }
         },
         {
@@ -300,9 +499,20 @@
             }
           ],
           "request": {
-            "auth": { "type": "noauth" },
+            "auth": {
+              "type": "noauth"
+            },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+            "url": {
+              "raw": "{{baseUrl}}/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "balance"
+              ]
+            }
           }
         },
         {
@@ -321,16 +531,31 @@
           "request": {
             "auth": {
               "type": "bearer",
-              "bearer": [{ "key": "token", "value": "ini.bukan.token", "type": "string" }]
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "ini.bukan.token",
+                  "type": "string"
+                }
+              ]
             },
             "method": "GET",
-            "url": { "raw": "{{baseUrl}}/wallet/balance", "host": ["{{baseUrl}}"], "path": ["wallet", "balance"] }
+            "url": {
+              "raw": "{{baseUrl}}/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "balance"
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "4. Transactions (Step 5-7)",
+      "name": "4. Transactions",
       "item": [
         {
           "name": "Top-up (200)",
@@ -348,9 +573,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"amount\": 1000000\n}" },
-            "url": { "raw": "{{baseUrl}}/transactions/topup", "host": ["{{baseUrl}}"], "path": ["transactions", "topup"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/topup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "topup"
+              ]
+            }
           }
         },
         {
@@ -368,9 +610,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"amount\": 0\n}" },
-            "url": { "raw": "{{baseUrl}}/transactions/topup", "host": ["{{baseUrl}}"], "path": ["transactions", "topup"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/topup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "topup"
+              ]
+            }
           }
         },
         {
@@ -389,9 +648,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 250000\n}" },
-            "url": { "raw": "{{baseUrl}}/transactions/transfer", "host": ["{{baseUrl}}"], "path": ["transactions", "transfer"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 250000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/transfer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "transfer"
+              ]
+            }
           }
         },
         {
@@ -409,9 +685,26 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 999999999\n}" },
-            "url": { "raw": "{{baseUrl}}/transactions/transfer", "host": ["{{baseUrl}}"], "path": ["transactions", "transfer"] }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toUserID\": \"{{receiverUserID}}\",\n  \"amount\": 999999999\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/transfer",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "transfer"
+              ]
+            }
           }
         },
         {
@@ -436,11 +729,22 @@
             "method": "GET",
             "url": {
               "raw": "{{baseUrl}}/transactions/history?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["transactions", "history"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "history"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "10" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
               ]
             }
           }
@@ -448,10 +752,10 @@
       ]
     },
     {
-      "name": "5. Payment (Step 8)",
+      "name": "5. Payment (RabbitMQ, asinkron)",
       "item": [
         {
-          "name": "Pay - buat sesi pending",
+          "name": "Saldo sebelum bayar (200)",
           "event": [
             {
               "listen": "test",
@@ -459,12 +763,38 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('balanceBeforePay', pm.response.json().balance);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pay - masuk antrian (202 pending)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 202', () => pm.response.to.have.status(202));",
                   "const body = pm.response.json();",
-                  "pm.test('field spec ada', () => pm.expect(body).to.include.keys('transactionID', 'message', 'newBalance'));",
-                  "pm.test('status pending, saldo belum dipotong', () => {",
-                  "  pm.expect(body.status).to.eql('pending');",
-                  "  pm.expect(body.expiresAt).to.be.a('string');",
-                  "});",
+                  "pm.test('field response', () => pm.expect(body).to.have.keys('transactionID', 'status', 'message', 'createdAt'));",
+                  "pm.test('status pending', () => pm.expect(body.status).to.eql('pending'));",
+                  "pm.test('createdAt RFC3339 UTC', () => pm.expect(body.createdAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/));",
                   "pm.collectionVariables.set('paymentID', body.transactionID);"
                 ]
               }
@@ -472,17 +802,72 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 50000,\n  \"description\": \"Coffee and croissant\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay"
+              ]
+            }
           }
         },
         {
-          "name": "Pay - confirm (200)",
+          "name": "Status langsung setelah bayar (200 pending)",
           "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dicek segera, sebelum payment-service selesai memproses (PAYMENT_PROCESSING_DELAY = 2s).",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('masih pending', () => pm.expect(pm.response.json().status).to.eql('pending'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay",
+                "{{paymentID}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Status setelah diproses (200 completed)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Beri waktu payment-service memproses pesan dan core menerima status.queue.",
+                  "const ms = Number(pm.collectionVariables.get('paymentWaitMs') || 4000);",
+                  "setTimeout(() => {}, ms);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -490,47 +875,97 @@
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('field spec ada', () => pm.expect(body).to.include.keys('transactionID', 'message', 'newBalance'));",
-                  "pm.test('status completed', () => pm.expect(body.status).to.eql('completed'));",
-                  "pm.test('ID sama dengan payment yang dibuat', () => pm.expect(body.transactionID).to.eql(pm.collectionVariables.get('paymentID')));"
+                  "pm.test('completed', () => pm.expect(body.status).to.eql('completed'));",
+                  "pm.test('ID sama', () => pm.expect(body.transactionID).to.eql(pm.collectionVariables.get('paymentID')));",
+                  "pm.test('amount & merchant sesuai', () => { pm.expect(body.amount).to.eql(50000); pm.expect(body.merchantID).to.eql('merchant-123'); });"
                 ]
               }
             }
           ],
           "request": {
-            "method": "POST",
+            "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
-              "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
+              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay",
+                "{{paymentID}}"
+              ]
             }
           }
         },
         {
-          "name": "Pay - confirm kedua kali (409)",
+          "name": "Saldo setelah bayar - terpotong tepat sekali (200)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));",
-                  "pm.test('pesan sudah completed', () => pm.expect(pm.response.json().error).to.eql('payment is already completed'));"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const before = Number(pm.collectionVariables.get('balanceBeforePay'));",
+                  "pm.test('berkurang 50000', () => pm.expect(pm.response.json().balance).to.eql(before - 50000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallet",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pay - saldo tidak cukup (400, tidak masuk antrian)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('pesan insufficient balance', () => pm.expect(pm.response.json().error).to.eql('insufficient balance'));"
                 ]
               }
             }
           ],
           "request": {
             "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 99999999\n}"
+            },
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{paymentID}}/confirm",
-              "host": ["{{baseUrl}}"],
-              "path": ["transactions", "pay", "{{paymentID}}", "confirm"]
+              "raw": "{{baseUrl}}/transactions/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay"
+              ]
             }
           }
         },
         {
-          "name": "Pay - saldo tidak cukup (400)",
+          "name": "Pay - body invalid, amount 0 (400)",
           "event": [
             {
               "listen": "test",
@@ -544,16 +979,70 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 99999999\n}"
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 0\n}"
             },
-            "url": { "raw": "{{baseUrl}}/transactions/pay", "host": ["{{baseUrl}}"], "path": ["transactions", "pay"] }
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay"
+              ]
+            }
           }
         },
         {
-          "name": "Pay - confirm id acak (404)",
+          "name": "Pay - tanpa token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Status - id acak (404)",
           "event": [
             {
               "listen": "test",
@@ -566,11 +1055,748 @@
             }
           ],
           "request": {
-            "method": "POST",
+            "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/transactions/pay/{{$guid}}/confirm",
-              "host": ["{{baseUrl}}"],
-              "path": ["transactions", "pay", "{{$guid}}", "confirm"]
+              "raw": "{{baseUrl}}/transactions/pay/{{$guid}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay",
+                "{{$guid}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Status - id bukan UUID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/transactions/pay/bukan-uuid",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transactions",
+                "pay",
+                "bukan-uuid"
+              ]
+            }
+          }
+        }
+      ],
+      "description": "POST /transactions/pay hanya memasukkan permintaan ke payment.queue lalu langsung membalas 202 pending.\npayment-service memproses pesan (simulasi 2 detik), memotong saldo lewat core, lalu mengirim hasil ke status.queue.\ncore mendengarkan status.queue dan meng-update status, yang bisa dicek lewat GET /transactions/pay/{id}."
+    },
+    {
+      "name": "6. Khusus mode go run (langsung ke :8081 / :8082)",
+      "description": "Request di folder ini memanggil service LANGSUNG (core :8081, payment :8082), tidak lewat gateway.\nDi mode full Docker kedua port itu sengaja tidak dibuka, jadi folder ini otomatis DI-SKIP.\n\nUntuk menjalankannya (mode go run):\n1. docker compose up -d, lalu go run . di core-service dan payment-service\n2. set variabel collection goRunMode = true\n3. isi internalApiKey dengan INTERNAL_API_KEY di core-service/.env\n\nFolder ini memakai noauth: yang dipakai header X-Internal-API-Key, bukan JWT user.",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Health payment-service (200, langsung :8082)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Part 3: payment-service hanya consumer RabbitMQ. HTTP server-nya tinggal /health.",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('database UP', () => pm.expect(pm.response.json().database).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{paymentUrl}}/api/v1/health",
+              "host": [
+                "{{paymentUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal balance - tanpa API key (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('code UNAUTHORIZED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHORIZED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal balance - JWT user saja, tanpa key (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Token user yang valid tetap DITOLAK: endpoint internal hanya menerima API key service.",
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Internal balance (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('field userID & balance', () => pm.expect(body).to.have.keys('userID', 'balance'));",
+                  "pm.test('saldo cukup untuk debit 10000', () => pm.expect(body.balance).to.be.at.least(10000));",
+                  "pm.collectionVariables.set('balanceBefore', body.balance);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit (200, replayed false)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// referenceID baru setiap kali dijalankan. Di alur asli, nilai ini adalah payment_id dari pesan RabbitMQ.",
+                  "pm.collectionVariables.set('debitRef', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('replayed false (debit baru)', () => pm.expect(body.replayed).to.eql(false));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('saldo berkurang 10000', () => pm.expect(body.newBalance).to.eql(before - 10000));",
+                  "pm.collectionVariables.set('debitTxID', body.transactionID);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - retry referenceID sama (200, replayed true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('replayed true (TIDAK dipotong lagi)', () => pm.expect(body.replayed).to.eql(true));",
+                  "pm.test('transactionID sama dengan debit pertama', () => pm.expect(body.transactionID).to.eql(pm.collectionVariables.get('debitTxID')));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('saldo tetap (hanya terpotong sekali)', () => pm.expect(body.newBalance).to.eql(before - 10000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - referenceID sama, amount beda (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('code IDEMPOTENCY_CONFLICT', () => pm.expect(pm.response.json().code).to.eql('IDEMPOTENCY_CONFLICT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 5000,\n  \"referenceID\": \"{{debitRef}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - saldo tidak cukup (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code INSUFFICIENT_BALANCE', () => pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_BALANCE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000000,\n  \"referenceID\": \"{{$guid}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - body invalid, tanpa referenceID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code INVALID_REQUEST', () => pm.expect(pm.response.json().code).to.eql('INVALID_REQUEST'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Debit - wallet tidak ada (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code WALLET_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('WALLET_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{$guid}}/debit",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{$guid}}",
+                "debit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"referenceID\": \"{{$guid}}\",\n  \"merchantID\": \"merchant-postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Internal balance - setelah semua debit (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const before = Number(pm.collectionVariables.get('balanceBefore'));",
+                  "pm.test('total terpotong tepat 10000 (sekali)', () => pm.expect(pm.response.json().balance).to.eql(before - 10000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - payment yang sudah diproses consumer (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dipakai payment-service sebelum menyatakan expired: \"apakah payment ini sudah memotong saldo?\"",
+                  "// Jalankan setelah folder 5 ({{paymentID}} sudah completed).",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('userID cocok', () => pm.expect(b.userID).to.eql(pm.collectionVariables.get('userID')));",
+                  "pm.test('amount 50000', () => pm.expect(b.amount).to.eql(50000));",
+                  "pm.test('ada createdAt & balance', () => { pm.expect(b.createdAt).to.be.a('string'); pm.expect(b).to.have.property('balance'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{paymentID}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{paymentID}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Debit lookup - referenceID belum pernah didebit (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('code DEBIT_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('DEBIT_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/debits/{{$guid}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "debits",
+                "{{$guid}}"
+              ]
+            }
+          }
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Port :8081 / :8082 hanya terbuka di mode go run. Di mode Docker, lewati saja.",
+              "if (pm.collectionVariables.get('goRunMode') !== 'true') {",
+              "  console.log('skip (goRunMode=false): ' + pm.info.requestName);",
+              "  pm.execution.skipRequest();",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Gateway",
+      "item": [
+        {
+          "name": "Gateway health (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/healthz",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway menolak /internal walau key benar (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Endpoint internal tidak pernah di-route oleh gateway: dari luar, ia seolah tidak ada.",
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{internalApiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/internal/wallets/{{userID}}/balance",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "internal",
+                "wallets",
+                "{{userID}}",
+                "balance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway: path tidak dikenal (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/tidak-ada",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "tidak-ada"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Gateway meneruskan /transactions/pay ke core (401 tanpa token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Part 3: pay ada di core. Tanpa token, core membalas 401 (bukan 404 / 502 dari gateway).",
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('jawaban dari core', () => pm.expect(pm.response.json().error).to.eql('missing or invalid authorization header'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchantID\": \"merchant-123\",\n  \"amount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{gatewayUrl}}/api/v1/transactions/pay",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions",
+                "pay"
+              ]
             }
           }
         }

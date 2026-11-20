@@ -1,0 +1,7 @@
+# Jangan ikutkan secret dan file lokal ke dalam image
+.env
+.env.*
+!.env.example
+*.exe
+*.log
+.git
