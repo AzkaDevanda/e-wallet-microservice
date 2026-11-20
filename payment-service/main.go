@@ -7,16 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"payment-service/internal/auth"
 	"payment-service/internal/client"
 	"payment-service/internal/config"
 	"payment-service/internal/database"
 	"payment-service/internal/handler"
-	"payment-service/internal/middleware"
+	"payment-service/internal/messaging"
 	"payment-service/internal/repository"
 	"payment-service/internal/router"
 	"payment-service/internal/service"
-	"payment-service/internal/worker"
 	"syscall"
 	"time"
 )
@@ -47,28 +45,39 @@ func main() {
 	}
 	defer sqlDB.Close()
 
-	// 3. Rangkai dependency
-	jwtParser := auth.NewJWTParser(cfg.JWTSecret)
+	// 3. RabbitMQ (Part 3)
+	mqConn, err := messaging.Connect(cfg.RabbitMQURL)
+	if err != nil {
+		log.Fatalf("gagal terhubung ke rabbitmq: %v", err)
+	}
+	defer mqConn.Close()
 
-	transactor := repository.NewTransactor(db)
+	if err := messaging.SetupTopology(mqConn); err != nil {
+		log.Fatalf("gagal menyiapkan topologi rabbitmq: %v", err)
+	}
+	log.Println("rabbitmq terhubung, exchange dan queue siap")
+
+	// 4. Rangkai dependency
 	paymentRepo := repository.NewPaymentRepository(db)
-
 	walletGateway := client.NewCoreWalletClient(cfg.CoreServiceURL, cfg.InternalAPIKey, cfg.CoreHTTPTimeout)
-	paymentService := service.NewPaymentService(transactor, paymentRepo, walletGateway, cfg.PaymentTTL, cfg.PaymentReconcileGrace)
+	paymentService := service.NewPaymentService(paymentRepo, walletGateway, cfg.PaymentTTL, cfg.PaymentProcessingDelay)
 
-	paymentHandler := handler.NewPaymentHandler(paymentService)
+	// 5. Consumer payment.queue (menggantikan reconciler)
+	consumer := messaging.NewConsumer(mqConn, paymentService, cfg.PaymentRetryDelay)
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		if err := consumer.Run(ctx); err != nil {
+			// Koneksi RabbitMQ putus: matikan proses.
+			// Docker (restart: unless-stopped) akan menyalakannya lagi
+			log.Fatalf("payment consumer berhenti: %v", err)
+		}
+	}()
 
-	// 4. Router
+	// 6. HTTP server (hanya health check)
 	r := router.New(router.Deps{
-		Health:  handler.Health(sqlDB),
-		Auth:    middleware.Auth(jwtParser),
-		Payment: paymentHandler,
+		Health: handler.Health(sqlDB),
 	})
-
-	// 5. Background worker: rekonsiliasi payment kedaluwarsa (Step 14: tanya core dulu, baru expired)
-	go worker.RunPaymentReconciler(ctx, paymentService, cfg.PaymentExpiryInterval)
-
-	// 6. Jalankan server di goroutine, lalu tunggu sinyal berhenti
 	srv := &http.Server{
 		Addr:    ":" + cfg.AppPort,
 		Handler: r,
@@ -89,5 +98,6 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+	<-consumerDone // tunggu pesan yang sedang diproses selesai di-ack / dikembalikan ke queue
 	log.Println("server berhenti")
 }
